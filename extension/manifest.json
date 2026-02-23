@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Universal AI Bridge",
+  "version": "0.1.0",
+  "description": "A MetaMask-style provider that injects window.ai into every webpage, bridging local (Ollama) and cloud AI providers.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:11434/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
