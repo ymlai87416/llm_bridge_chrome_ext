@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Universal AI Bridge Settings</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 12px;
+        width: 360px;
+        color: #111827;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: 15px;
+      }
+
+      .section {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 10px;
+        margin-bottom: 10px;
+      }
+
+      .row {
+        margin-bottom: 8px;
+      }
+
+      .row:last-child {
+        margin-bottom: 0;
+      }
+
+      label {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 4px;
+      }
+
+      input[type="text"],
+      input[type="password"] {
+        box-sizing: border-box;
+        width: 100%;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .checkbox-row label {
+        margin: 0;
+      }
+
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 8px;
+        background: #2563eb;
+        color: #fff;
+        padding: 8px 10px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      #status {
+        margin-top: 8px;
+        font-size: 12px;
+        min-height: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Universal AI Bridge</h1>
+
+    <div class="section">
+      <div class="row"><strong>OpenAI</strong></div>
+      <div class="row checkbox-row">
+        <input id="openai_enabled" type="checkbox" />
+        <label for="openai_enabled">Enable OpenAI provider</label>
+      </div>
+      <div class="row">
+        <label for="openai_api_key">API Key</label>
+        <input id="openai_api_key" type="password" placeholder="sk-..." />
+      </div>
+      <div class="row">
+        <label for="openai_models">Models (comma-separated)</label>
+        <input id="openai_models" type="text" placeholder="gpt-4o,gpt-4.1-mini" />
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="row"><strong>Claude</strong></div>
+      <div class="row checkbox-row">
+        <input id="claude_enabled" type="checkbox" />
+        <label for="claude_enabled">Enable Claude provider</label>
+      </div>
+      <div class="row">
+        <label for="claude_api_key">API Key</label>
+        <input id="claude_api_key" type="password" placeholder="sk-ant-..." />
+      </div>
+      <div class="row">
+        <label for="claude_models">Models (comma-separated)</label>
+        <input id="claude_models" type="text" placeholder="claude-3-5-sonnet-latest" />
+      </div>
+    </div>
+
+    <button id="save">Save settings</button>
+    <div id="status"></div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,4 +1,5 @@
 const OLLAMA_BASE_URL = 'http://localhost:11434';
+const TRUSTED_ORIGINS_STORAGE_KEY = 'trusted_origins';
 
 const CLOUD_PROVIDERS = {
   openAI: {
@@ -7,6 +8,7 @@ const CLOUD_PROVIDERS = {
     chatEndpoint: '/chat/completions',
     keyStorageField: 'openai_api_key',
     modelsStorageField: 'openai_models',
+    enabledStorageField: 'openai_enabled',
   },
   claude: {
     name: 'claude',
@@ -14,6 +16,7 @@ const CLOUD_PROVIDERS = {
     chatEndpoint: '/messages',
     keyStorageField: 'claude_api_key',
     modelsStorageField: 'claude_models',
+    enabledStorageField: 'claude_enabled',
   },
 };
 
@@ -31,10 +34,26 @@ function makeError(code, message) {
   return { code, message };
 }
 
+const pendingOriginApprovals = new Map();
+const approvalWindowToOrigin = new Map();
+
 // ── Ollama helpers ──────────────────────────────────────────────────────────
 
+function getValidatedOllamaUrl(path) {
+  const url = new URL(path, OLLAMA_BASE_URL);
+  const isValid =
+    url.protocol === 'http:' &&
+    url.hostname === 'localhost' &&
+    url.port === '11434';
+  if (!isValid) {
+    throw makeError(ERROR_CODES.REQUEST_FAILED, 'Local isolation violation: Ollama must be localhost:11434.');
+  }
+  return url.toString();
+}
+
 async function ollamaFetch(path, options = {}) {
-  const res = await fetch(`${OLLAMA_BASE_URL}${path}`, options);
+  const ollamaUrl = getValidatedOllamaUrl(path);
+  const res = await fetch(ollamaUrl, options);
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Ollama ${res.status}: ${body}`);
@@ -88,6 +107,103 @@ async function ollamaGenerate(model, prompt, maxTokens) {
 
 // ── Cloud helpers ───────────────────────────────────────────────────────────
 
+function parseOrigin(origin) {
+  if (!origin || typeof origin !== 'string') return null;
+  try {
+    return new URL(origin).origin;
+  } catch {
+    return null;
+  }
+}
+
+function isExtensionPageSender(sender) {
+  return Boolean(sender?.url?.startsWith(`chrome-extension://${chrome.runtime.id}/`));
+}
+
+async function getTrustedOrigins() {
+  const data = await chrome.storage.local.get([TRUSTED_ORIGINS_STORAGE_KEY]);
+  const trustedOrigins = data[TRUSTED_ORIGINS_STORAGE_KEY];
+  return trustedOrigins && typeof trustedOrigins === 'object' ? trustedOrigins : {};
+}
+
+async function saveTrustedOrigin(origin) {
+  const trustedOrigins = await getTrustedOrigins();
+  trustedOrigins[origin] = Date.now();
+  await chrome.storage.local.set({ [TRUSTED_ORIGINS_STORAGE_KEY]: trustedOrigins });
+}
+
+async function isOriginTrusted(origin) {
+  const trustedOrigins = await getTrustedOrigins();
+  return Boolean(trustedOrigins[origin]);
+}
+
+async function ensureOriginApproval(origin) {
+  const normalizedOrigin = parseOrigin(origin);
+  if (!normalizedOrigin) {
+    throw makeError(ERROR_CODES.USER_REJECTED, 'Invalid request origin.');
+  }
+
+  if (await isOriginTrusted(normalizedOrigin)) return;
+
+  const existing = pendingOriginApprovals.get(normalizedOrigin);
+  if (existing) {
+    return existing.promise;
+  }
+
+  let resolveApproval;
+  let rejectApproval;
+  const promise = new Promise((resolve, reject) => {
+    resolveApproval = resolve;
+    rejectApproval = reject;
+  });
+
+  pendingOriginApprovals.set(normalizedOrigin, {
+    promise,
+    resolveApproval,
+    rejectApproval,
+    windowId: null,
+  });
+
+  try {
+    const approvalUrl = chrome.runtime.getURL(`approval.html?origin=${encodeURIComponent(normalizedOrigin)}`);
+    const win = await chrome.windows.create({
+      url: approvalUrl,
+      type: 'popup',
+      width: 420,
+      height: 540,
+    });
+
+    const pending = pendingOriginApprovals.get(normalizedOrigin);
+    if (!pending) return;
+    pending.windowId = win.id ?? null;
+    if (win.id !== undefined) approvalWindowToOrigin.set(win.id, normalizedOrigin);
+  } catch (err) {
+    pendingOriginApprovals.delete(normalizedOrigin);
+    throw makeError(ERROR_CODES.USER_REJECTED, err?.message || 'Unable to open approval popup.');
+  }
+
+  return promise;
+}
+
+function resolveOriginApproval(origin, approved, reason) {
+  const pending = pendingOriginApprovals.get(origin);
+  if (!pending) return;
+
+  pendingOriginApprovals.delete(origin);
+  if (pending.windowId !== null) {
+    approvalWindowToOrigin.delete(pending.windowId);
+  }
+
+  if (approved) {
+    saveTrustedOrigin(origin)
+      .then(() => pending.resolveApproval())
+      .catch(() => pending.resolveApproval());
+    return;
+  }
+
+  pending.rejectApproval(makeError(ERROR_CODES.USER_REJECTED, reason || 'User rejected this site.'));
+}
+
 async function getCloudProviderConfig(providerName) {
   const provider = CLOUD_PROVIDERS[providerName];
   if (!provider) return null;
@@ -95,11 +211,13 @@ async function getCloudProviderConfig(providerName) {
   const stored = await chrome.storage.local.get([
     provider.keyStorageField,
     provider.modelsStorageField,
+    provider.enabledStorageField,
   ]);
 
   const apiKey = stored[provider.keyStorageField];
   const models = stored[provider.modelsStorageField];
-  if (!apiKey) return null;
+  const enabled = stored[provider.enabledStorageField] !== false;
+  if (!enabled || !apiKey) return null;
 
   return { ...provider, apiKey, models: models || [] };
 }
@@ -253,6 +371,28 @@ async function handleGenerateText(params) {
 // ── Message router ──────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'APPROVAL_DECISION') {
+    const normalizedOrigin = parseOrigin(message.origin);
+    const approved = Boolean(message.approved);
+    if (!normalizedOrigin) {
+      sendResponse({ error: makeError(ERROR_CODES.REQUEST_FAILED, 'Invalid origin in approval response.') });
+      return true;
+    }
+
+    if (!isExtensionPageSender(_sender)) {
+      sendResponse({ error: makeError(ERROR_CODES.USER_REJECTED, 'Only extension pages can submit approval decisions.') });
+      return true;
+    }
+
+    resolveOriginApproval(
+      normalizedOrigin,
+      approved,
+      approved ? '' : 'User denied trust for this site.'
+    );
+    sendResponse({ result: { ok: true } });
+    return true;
+  }
+
   if (message?.type === 'AI_BRIDGE') {
     handleBridgeMessage(message)
       .then((result) => sendResponse({ result }))
@@ -268,16 +408,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 async function handleBridgeMessage(message) {
-  const { method, params } = message;
+  const { method, params, origin } = message;
 
   switch (method) {
     case 'getCapabilities':
       return handleGetCapabilities();
 
     case 'ai_generateText':
+      await ensureOriginApproval(origin);
       return handleGenerateText(params || {});
 
     default:
       throw makeError(ERROR_CODES.INVALID_METHOD, `Unknown method "${method}".`);
   }
 }
+
+chrome.windows.onRemoved.addListener((windowId) => {
+  const origin = approvalWindowToOrigin.get(windowId);
+  if (!origin) return;
+  resolveOriginApproval(origin, false, 'Approval popup was closed.');
+});

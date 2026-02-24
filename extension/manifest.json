@@ -7,8 +7,13 @@
     "storage"
   ],
   "host_permissions": [
-    "http://localhost:11434/*"
+    "http://localhost:11434/*",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*"
   ],
+  "action": {
+    "default_popup": "popup.html"
+  },
   "background": {
     "service_worker": "background.js"
   },
