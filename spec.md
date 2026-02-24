@@ -136,19 +136,19 @@ Since models are heavy, the system must handle "missing" states gracefully.
 
 ### Phase 1: Chrome Extension Core (`extension/`)
 
-- [ ] Initialize project structure and Manifest V3 configuration (`manifest.json`, service worker entry, content script entry)
-- [ ] Background Service Worker: Ollama connection (`localhost:11434`) and request routing to local/cloud providers
-- [ ] Content Script: Inject `window.ai` object into every webpage (the "MetaMask" pattern)
-- [ ] Implement `window.ai.getCapabilities()` — query available providers and models
-- [ ] Implement `window.ai.request()` — intent-based routing (`ai_generateText`, etc.) with provider/model selection
-- [ ] Error handling: `MODEL_NOT_FOUND`, `INSUFFICIENT_FUNDS`, `USER_REJECTED`, `HARDWARE_LIMIT`
+- [x] Initialize project structure and Manifest V3 configuration (`manifest.json`, service worker entry, content script entry)
+- [x] Background Service Worker: Ollama connection (`localhost:11434`) and request routing to local/cloud providers
+- [x] Content Script: Inject `window.ai` object into every webpage (the "MetaMask" pattern)
+- [x] Implement `window.ai.getCapabilities()` — query available providers and models
+- [x] Implement `window.ai.request()` — intent-based routing (`ai_generateText`, etc.) with provider/model selection
+- [x] Error handling: `MODEL_NOT_FOUND`, `INSUFFICIENT_FUNDS`, `USER_REJECTED`, `HARDWARE_LIMIT`
 
 ### Phase 2: Security & UI (`extension/`)
 
-- [ ] Approval Popup: first request from a new domain triggers a "Do you trust this site?" confirmation
-- [ ] Origin-Bound API Key management (keys stored in background service worker, never exposed to webpages)
-- [ ] Extension Popup UI: settings page for API key configuration and provider management
-- [ ] Local isolation: ensure Ollama connection is restricted to `localhost:11434` only
+- [x] Approval Popup: first request from a new domain triggers a "Do you trust this site?" confirmation
+- [x] Origin-Bound API Key management (keys stored in background service worker, never exposed to webpages)
+- [x] Extension Popup UI: settings page for API key configuration and provider management
+- [x] Local isolation: ensure Ollama connection is restricted to `localhost:11434` only
 
 ### Phase 3: Spending Tracking & Cost Controls (`extension/`)
 
